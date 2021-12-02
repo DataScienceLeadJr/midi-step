@@ -52,7 +52,7 @@ where
 }
 
 fn main() {
-    let midi_input = midir::MidiInput::new("MIDITest").unwrap();
+    let midi_input = midir::MidiInput::new(ARTURIA_DEVICE).unwrap();
 
     let device_port = find_port(&midi_input);
     if device_port.is_none() {
@@ -60,122 +60,23 @@ fn main() {
         return;
     }
 
-    let (sender, receiver) = channel::<MidiMessage>();
+    let (sender, _receiver) = channel::<MidiMessage>();
 
     let device_port = device_port.unwrap();
     let _connect_in = midi_input.connect(
         &device_port,
         ARTURIA_DEVICE,
-        move |_timestamp, data, sender| {
+        move |timestamp, data, sender| {
             let msg = MidiMessage::from(data);
-            // println!("{}: received {:?} => {:?}", timestamp, data, msg);
+            println!("{}: received {:?} => {:?}", timestamp, data, msg);
             print_on_err!(sender.send(msg));
         },
         sender,
     );
 
-    let midi_output = midir::MidiOutput::new("MIDITest").unwrap();
-    let device_port = find_port(&midi_output);
-    if device_port.is_none() {
-        println!("Output device not found!");
-        return;
-    }
-
-    let device_port = device_port.unwrap();
-    if let Ok(mut connect_out) = midi_output.connect(&device_port, ARTURIA_DEVICE) {
-        let msg = MidiMessage::SysEx(SysExEvent::new_non_realtime(
-            consts::usysex::ALL_CALL,
-            [0x06, 0x01],
-            &[0xf7],
-        ));
-        print_on_err!(connect_out.send_message(msg));
-        println!("Press Control-C at anytime to stop the demo");
-
-        let hundred_millis = time::Duration::from_millis(100);
-        loop {
-            if let Ok(msg) = receiver.recv() {
-                if let Some(decoder) = USysExDecoder::decode(&msg) {
-                    if decoder.is_non_realtime()
-                        && decoder.target_device() == 0
-                        && decoder.general_info_reply_manufacturer_id()
-                            == Some(arturia::EXTENDED_ID_VALUE)
-                    {
-                        if decoder.general_info_reply_family() != Some(([2, 0], [4, 2])) {
-                            println!("Your device isn't supported by this demo");
-                            println!("Only the Arturia minilab MkII is supported");
-                        } else {
-                            run_demo(&mut connect_out);
-                        }
-                    }
-                }
-            }
-            thread::sleep(hundred_millis);
-        }
-    }
+    // receiver would be synth program. I guess?
+    // or really Any program (visual perchance? ;) ;) )
 }
-
-fn run_demo(connect_out: &mut midir::MidiOutputConnection) {
-    let delay = time::Duration::from_millis(100);
-
-    // pads 1..8
-    // for pads 9..16 use 0x78..=0x7f
-    let pads = 0x78..=0x7f;
-
-    let PARAM_COLOUR = 0x23; //TODO: this one.. what?
-
-    // clear all pads.
-    for pad in pads.clone() {
-        let msg = arturia::v2::set_value(PARAM_COLOUR, pad, 0x00);
-        print_on_err!(connect_out.send_message(msg));
-    }
-
-    let colour_set = [
-        0x23,
-        0x34,
-        0x54,
-        0x7f,
-        0xa3,
-    ];
-    let mut iter = colour_set.iter();
-    loop {
-        for pad in pads.clone().rev() {
-            let colour = if let Some(c) = iter.next() {
-                c
-            } else {
-                iter = colour_set.iter();
-                iter.next().unwrap()
-            };
-            let msg = arturia::v2::set_value(PARAM_COLOUR, pad, *colour);
-            print_on_err!(connect_out.send_message(msg));
-            thread::sleep(delay);
-        }
-        for pad in pads.clone().rev() {
-            let msg = arturia::v2::set_value(PARAM_COLOUR, pad, 0);
-            print_on_err!(connect_out.send_message(msg));
-            thread::sleep(delay);
-        }
-        for pad in pads.clone() {
-            let colour = if let Some(c) = iter.next() {
-                c
-            } else {
-                iter = colour_set.iter();
-                iter.next().unwrap()
-            };
-            let msg = arturia::v2::set_value(PARAM_COLOUR, pad, *colour);
-            print_on_err!(connect_out.send_message(msg));
-            thread::sleep(delay);
-        }
-        for pad in pads.clone() {
-            let msg = arturia::v2::set_value(PARAM_COLOUR, pad, 0);
-            print_on_err!(connect_out.send_message(msg));
-            thread::sleep(delay);
-        }
-    }
-}
-
-
-
-
 
 
 #[cfg(test)]
