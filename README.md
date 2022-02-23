@@ -1,2 +1,2 @@
 # midi-step
-For working with my Arturia Keystep
+Messing about with playing/visualizing input from my Arturia Keystep
